@@ -1,0 +1,336 @@
+import java.util.*;
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+
+class Book {
+    String id, title, author, category;
+    int copies, available;
+    LocalDateTime addedTime;
+    
+    Book(String id, String title, String author, String category, int copies) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+        this.category = category;
+        this.copies = this.available = copies;
+        this.addedTime = LocalDateTime.now();
+    }
+}
+
+class Member {
+    String id, name, email, type;
+    LocalDate joinDate, expiryDate;
+    int booksIssued, maxBooks;
+    double fine;
+    
+    Member(String id, String name, String email, String type) {
+        this.id = id;
+        this.name = name;
+        this.email = email;
+        this.type = type;
+        this.joinDate = LocalDate.now();
+        this.expiryDate = joinDate.plusYears(1);
+        this.maxBooks = type.equals("PREMIUM") ? 10 : (type.equals("REGULAR") ? 5 : 3);
+    }
+}
+
+class Transaction {
+    String transId, bookId, memberId;
+    LocalDateTime issueTime, dueTime, returnTime;
+    double fine;
+    boolean active = true;
+    
+    Transaction(String bookId, String memberId, int days) {
+        this.transId = "T" + System.currentTimeMillis();
+        this.bookId = bookId;
+        this.memberId = memberId;
+        this.issueTime = LocalDateTime.now();
+        this.dueTime = issueTime.plusDays(days);
+    }
+}
+
+public class Library {
+    ArrayList<Book> books = new ArrayList<>();
+    ArrayList<Member> members = new ArrayList<>();
+    ArrayList<Transaction> transactions = new ArrayList<>();
+    Scanner sc = new Scanner(System.in);
+    DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+    DateTimeFormatter timeOnly = DateTimeFormatter.ofPattern("HH:mm");
+    String userId;
+    LocalDateTime sessionStart;
+    LocalTime CLOSING_TIME = LocalTime.of(21, 0);
+    
+    void startSession() {
+        System.out.print("Enter User ID: ");
+        userId = sc.nextLine();
+        sessionStart = LocalDateTime.now();
+        System.out.println("Session started at: " + sessionStart.format(dtf));
+        
+        long minutesUntilClose = Duration.between(LocalTime.now(), CLOSING_TIME).toMinutes();
+        System.out.println("Library closes in: " + minutesUntilClose + " minutes");
+        
+        initializeData();
+    }
+    
+    void initializeData() {
+        books.add(new Book("B001", "Java Programming", "Herbert Schildt", "Programming", 5));
+        books.add(new Book("B002", "Data Structures", "Mark Allen", "Computer Science", 3));
+        books.add(new Book("B003", "Design Patterns", "Gang of Four", "Architecture", 2));
+        members.add(new Member("M001", "John Doe", "john@email.com", "STUDENT"));
+        members.add(new Member("M002", "Jane Smith", "jane@email.com", "PREMIUM"));
+        System.out.println("Sample data loaded at " + LocalDateTime.now().format(dtf));
+    }
+    
+    void addBook() {
+        System.out.print("Book ID (ex: B001): ");
+        String id = sc.nextLine();
+        System.out.print("Title: ");
+        String title = sc.nextLine();
+        System.out.print("Author: ");
+        String author = sc.nextLine();
+        System.out.print("Category: ");
+        String category = sc.nextLine();
+        System.out.print("Copies: ");
+        int copies = sc.nextInt();
+        sc.nextLine();
+        
+        books.add(new Book(id, title, author, category, copies));
+        System.out.println("✓ Book added at " + LocalDateTime.now().format(dtf));
+    }
+    
+    void registerMember() {
+        System.out.print("Member ID (ex: M001): ");
+        String id = sc.nextLine();
+        System.out.print("Name: ");
+        String name = sc.nextLine();
+        System.out.print("Email (ex: john@email.com): ");
+        String email = sc.nextLine();
+        System.out.print("Type (STUDENT/REGULAR/PREMIUM): ");
+        String type = sc.nextLine().toUpperCase();
+        
+        members.add(new Member(id, name, email, type));
+        System.out.println("✓ Member registered | Max books: " + 
+            (type.equals("PREMIUM") ? 10 : type.equals("REGULAR") ? 5 : 3));
+        System.out.println("Expiry: " + LocalDate.now().plusYears(1));
+    }
+    
+    void issueBook() {
+        System.out.print("Book ID: ");
+        String bookId = sc.nextLine();
+        System.out.print("Member ID: ");
+        String memberId = sc.nextLine();
+        
+        Book book = books.stream().filter(b -> b.id.equals(bookId)).findFirst().orElse(null);
+        Member member = members.stream().filter(m -> m.id.equals(memberId)).findFirst().orElse(null);
+        
+        if(book == null || member == null) {
+            System.out.println("✗ Invalid ID");
+            return;
+        }
+        
+        if(book.available <= 0) {
+            System.out.println("✗ Book unavailable");
+            return;
+        }
+        
+        if(member.fine > 0) {
+            System.out.println("✗ Clear fine: ₹" + member.fine);
+            return;
+        }
+        
+        if(member.booksIssued >= member.maxBooks) {
+            System.out.println("✗ Book limit reached");
+            return;
+        }
+        
+        int days = member.type.equals("PREMIUM") ? 30 : member.type.equals("REGULAR") ? 21 : 14;
+        Transaction trans = new Transaction(bookId, memberId, days);
+        transactions.add(trans);
+        book.available--;
+        member.booksIssued++;
+        
+        System.out.println("✓ Book issued successfully!");
+        System.out.println("Issue Time: " + trans.issueTime.format(dtf));
+        System.out.println("Due Time: " + trans.dueTime.format(dtf));
+        System.out.println("Transaction ID: " + trans.transId);
+    }
+    
+    void returnBook() {
+        System.out.print("Transaction ID (ex: T1234...): ");
+        String transId = sc.nextLine();
+        
+        Transaction trans = transactions.stream()
+            .filter(t -> t.transId.equals(transId) && t.active).findFirst().orElse(null);
+        
+        if(trans == null) {
+            System.out.println("✗ Invalid transaction");
+            return;
+        }
+        
+        trans.returnTime = LocalDateTime.now();
+        trans.active = false;
+        
+        Book book = books.stream().filter(b -> b.id.equals(trans.bookId)).findFirst().orElse(null);
+        Member member = members.stream().filter(m -> m.id.equals(trans.memberId)).findFirst().orElse(null);
+        
+        book.available++;
+        member.booksIssued--;
+        
+        if(trans.returnTime.isAfter(trans.dueTime)) {
+            long days = trans.dueTime.until(trans.returnTime, java.time.temporal.ChronoUnit.DAYS);
+            trans.fine = days * 5;
+            member.fine += trans.fine;
+            System.out.println("✓ Book returned late!");
+            System.out.println("Overdue by: " + days + " days | Fine: ₹" + trans.fine);
+        } else {
+            System.out.println("✓ Book returned on time!");
+        }
+        System.out.println("Return Time: " + trans.returnTime.format(dtf));
+    }
+    
+    void payFine() {
+        System.out.print("Member ID: ");
+        String memberId = sc.nextLine();
+        
+        Member member = members.stream().filter(m -> m.id.equals(memberId)).findFirst().orElse(null);
+        if(member == null || member.fine == 0) {
+            System.out.println("No pending fines!");
+            return;
+        }
+        
+        System.out.println("Total fine: ₹" + member.fine);
+        System.out.print("Amount to pay: ");
+        double amount = sc.nextDouble();
+        sc.nextLine();
+        member.fine -= amount;
+        System.out.println("✓ Payment successful | Remaining: ₹" + member.fine);
+    }
+    
+    void search() {
+        System.out.print("Search book: ");
+        String query = sc.nextLine().toLowerCase();
+        
+        System.out.println("\n=== SEARCH RESULTS ===");
+        books.stream()
+            .filter(b -> b.title.toLowerCase().contains(query) || 
+                        b.author.toLowerCase().contains(query))
+            .forEach(b -> System.out.println(b.id + " | " + b.title + " | " + b.author + 
+                                            " | Available: " + b.available + "/" + b.copies));
+    }
+    
+    void viewOverdue() {
+        System.out.println("\n=== OVERDUE BOOKS ===");
+        LocalDateTime now = LocalDateTime.now();
+        boolean found = false;
+        
+        for(Transaction t : transactions) {
+            if(t.active && now.isAfter(t.dueTime)) {
+                Book book = books.stream().filter(b -> b.id.equals(t.bookId)).findFirst().orElse(null);
+                Member member = members.stream().filter(m -> m.id.equals(t.memberId)).findFirst().orElse(null);
+                long days = t.dueTime.until(now, java.time.temporal.ChronoUnit.DAYS);
+                System.out.println("Book: " + book.title + " | Member: " + member.name);
+                System.out.println("Due Date: " + t.dueTime.format(dtf) + " | Days Overdue: " + days + " | Fine: ₹" + (days*5));
+                found = true;
+            }
+        }
+        if(!found) System.out.println("No overdue books!");
+    }
+    
+    void memberHistory() {
+        System.out.print("Member ID: ");
+        String memberId = sc.nextLine();
+        
+        Member member = members.stream().filter(m -> m.id.equals(memberId)).findFirst().orElse(null);
+        if(member == null) {
+            System.out.println("Invalid member ID!");
+            return;
+        }
+        
+        System.out.println("\n=== MEMBER PROFILE: " + member.name + " ===");
+        System.out.println("Member Since: " + member.joinDate);
+        System.out.println("Membership Type: " + member.type);
+        System.out.println("Expiry: " + member.expiryDate);
+        System.out.println("Books Currently Issued: " + member.booksIssued + "/" + member.maxBooks);
+        System.out.println("Pending Fines: ₹" + member.fine);
+        
+        System.out.println("\n=== CURRENT BOOKS ===");
+        transactions.stream()
+            .filter(t -> t.memberId.equals(memberId) && t.active)
+            .forEach(t -> {
+                Book book = books.stream().filter(b -> b.id.equals(t.bookId)).findFirst().orElse(null);
+                System.out.println(book.title + " | Due: " + t.dueTime.format(dtf));
+            });
+    }
+    
+    void generateReport() {
+        System.out.println("\n=== LIBRARY STATISTICS ===");
+        System.out.println("Report Generated: " + LocalDateTime.now().format(dtf));
+        
+        System.out.println("\n📚 BOOK STATISTICS:");
+        System.out.println("Total Books: " + books.size());
+        int total = books.stream().mapToInt(b -> b.copies).sum();
+        int available = books.stream().mapToInt(b -> b.available).sum();
+        System.out.println("Total Copies: " + total);
+        System.out.println("Available: " + available + " | Issued: " + (total - available));
+        
+        System.out.println("\n👥 MEMBER STATISTICS:");
+        System.out.println("Total Members: " + members.size());
+        System.out.println("STUDENT: " + members.stream().filter(m -> m.type.equals("STUDENT")).count());
+        System.out.println("REGULAR: " + members.stream().filter(m -> m.type.equals("REGULAR")).count());
+        System.out.println("PREMIUM: " + members.stream().filter(m -> m.type.equals("PREMIUM")).count());
+        
+        System.out.println("\n💰 FINANCIAL:");
+        double totalFine = members.stream().mapToDouble(m -> m.fine).sum();
+        System.out.println("Total Pending Fines: ₹" + totalFine);
+        
+        System.out.println("\n⏰ SESSION INFO:");
+        System.out.println("Current Session User: " + userId);
+        System.out.println("Login Time: " + sessionStart.format(dtf));
+        Duration sessionDuration = Duration.between(sessionStart, LocalDateTime.now());
+        System.out.println("Session Duration: " + sessionDuration.toMinutes() + " minutes");
+    }
+    
+    public static void main(String[] args) {
+        Library lib = new Library();
+        Scanner sc = new Scanner(System.in);
+        
+        System.out.println("=== LIBRARY MANAGEMENT SYSTEM ===");
+        lib.startSession();
+        
+        while(true) {
+            System.out.println("\n=== MENU [" + LocalTime.now().format(lib.timeOnly) + "] ===");
+            System.out.println("1. Add Book");
+            System.out.println("2. Register Member");
+            System.out.println("3. Issue Book");
+            System.out.println("4. Return Book");
+            System.out.println("5. Pay Fine");
+            System.out.println("6. Search Book");
+            System.out.println("7. View Overdue Books");
+            System.out.println("8. View Member History");
+            System.out.println("9. Generate Report");
+            System.out.println("10. Exit");
+            System.out.print("Choice: ");
+            
+            int choice = sc.nextInt();
+            sc.nextLine();
+            
+            switch(choice) {
+                case 1: lib.addBook(); break;
+                case 2: lib.registerMember(); break;
+                case 3: lib.issueBook(); break;
+                case 4: lib.returnBook(); break;
+                case 5: lib.payFine(); break;
+                case 6: lib.search(); break;
+                case 7: lib.viewOverdue(); break;
+                case 8: lib.memberHistory(); break;
+                case 9: lib.generateReport(); break;
+                case 10: 
+                    Duration session = Duration.between(lib.sessionStart, LocalDateTime.now());
+                    System.out.println("Session ended at: " + LocalDateTime.now().format(lib.dtf));
+                    System.out.println("Total session time: " + session.toMinutes() + " minutes");
+                    System.out.println("Goodbye!");
+                    System.exit(0);
+            }
+        }
+    }
+}
